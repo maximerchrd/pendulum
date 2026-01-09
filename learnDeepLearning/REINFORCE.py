@@ -1,12 +1,12 @@
 import numpy as np
 
 # Simulation parameters
-VARIANCE = 0.6
+VARIANCE = 0.5
 railLengthMargin = 0.092  
 massCart = 0.15           
-massPole = 0.05           
+massPole = 0.06           
 lengthPole = 0.18         
-motorForce = 8.0
+motorForce = 9.0
 dt_phys_sim = 0.002
 limit_angle = 0.21
 limit_distance = 0.091
@@ -16,13 +16,13 @@ sensor_noise_pos = 0.008
 sensor_noise_vel = 0.08
 sensor_noise_angle = 0.0015
 sensor_noise_gyro = 0.08
-success_threshold = 425
+success_threshold = 435
 
 # Neural network parameters
 nb_neurons = 24
 starting_learning_rate = 0.002
 learning_rate = starting_learning_rate
-gamma = 0.99
+gamma = 0.98
 
 weights_1 = np.random.uniform(-0.1, 0.1, (nb_neurons, 4))
 biases_1 = np.random.uniform(-0.1, 0.1, (nb_neurons, 1))
@@ -107,9 +107,9 @@ for _game in range(nb_games):
     for _step in range(nb_macro_steps):
         # Forward pass
         noisy_state = [
-            current_state[0] + np.random.normal(0, sensor_noise_pos),
+            (current_state[0] + np.random.normal(0, sensor_noise_pos)) * 5.0,
             current_state[1] + np.random.normal(0, sensor_noise_vel),
-            current_state[2] + np.random.normal(0, sensor_noise_angle) + angle_bias,
+            ((current_state[2] + np.random.normal(0, sensor_noise_angle) + angle_bias)) * 20.0,
             current_state[3] + np.random.normal(0, sensor_noise_gyro)
         ]
         x_input = np.array(noisy_state).reshape(-1, 1)
@@ -132,8 +132,20 @@ for _game in range(nb_games):
              reward_history.append(0)
              break
         else:
-            dist_penalty = abs(current_state[2]) / limit_distance
-            reward = 1.0 - (0.9 * dist_penalty)
+            # A. Distance Cost: Punish drifting near the rails
+            # (Normalized 0.0 to 1.0)
+            dist_cost = (current_state[0] / limit_distance) ** 2
+            
+            # B. Angle Cost: AGGRESSIVELY punish leaning
+            # We square it so big leans are punished massively
+            angle_cost = (current_state[2] / limit_angle) ** 2
+            
+            # C. The "Upright" Formula
+            # We give a base +1.0 for surviving.
+            # We subtract a HUGE penalty for angle to force verticality.
+            # We subtract a smaller penalty for distance to keep it centered.
+            
+            reward = 1.0 - (30.0 * dist_cost) - (30.0 * angle_cost)
             reward_history.append(reward)
 
     # Backpropagation
